@@ -1,6 +1,6 @@
 import os
 import time
-from core.celery_app import celery_app
+from app.workers.celery_app import celery_app
 
 UPLOAD_DIR = "uploads"
 
