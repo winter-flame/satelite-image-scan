@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ScientificReport",
+  "description": "AI Validation/Benchmark -> Frontend: report + benchmark rendering format.",
+  "type": "object",
+  "required": ["job_id", "benchmark_scores"],
+  "properties": {
+    "job_id": { "type": "string", "format": "uuid" },
+    "benchmark_scores": {
+      "type": "object",
+      "properties": {
+        "bicubic": { "type": "number" },
+        "lanczos": { "type": "number" },
+        "esrgan": { "type": "number" },
+        "system": { "type": "number" }
+      }
+    },
+    "downstream_detection_deltas": {
+      "type": "object",
+      "properties": {
+        "crater_f1_before": { "type": "number" },
+        "crater_f1_after": { "type": "number" },
+        "terrain_f1_before": { "type": "number" },
+        "terrain_f1_after": { "type": "number" },
+        "hazard_f1_before": { "type": "number" },
+        "hazard_f1_after": { "type": "number" }
+      }
+    }
+  }
+}

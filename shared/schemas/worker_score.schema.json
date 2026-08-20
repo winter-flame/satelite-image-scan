@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "WorkerScore",
+  "description": "AI Orchestrator <-> AI Correction Workers: common score format for fidelity gates and decision engine.",
+  "type": "object",
+  "required": ["tile_filename", "model", "model_version", "scores"],
+  "properties": {
+    "tile_filename": { "type": "string" },
+    "model": { "type": "string" },
+    "model_version": { "type": "string" },
+    "iteration": { "type": "integer" },
+    "scores": {
+      "type": "object",
+      "properties": {
+        "niqe": { "type": "number" },
+        "brisque": { "type": "number" },
+        "edge_ssim": { "type": "number" },
+        "spectral_fidelity": { "type": "number" },
+        "radiometric_fidelity": { "type": "number" },
+        "geometric_fidelity": { "type": "number" }
+      }
+    },
+    "hallucination_flag": { "type": "boolean" },
+    "decision": { "type": "string", "enum": ["accept", "review", "reject"] }
+  }
+}

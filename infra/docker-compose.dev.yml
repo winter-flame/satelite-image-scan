@@ -1,0 +1,13 @@
+# Local dev overrides — mounts source for hot-reload instead of baking it into the image.
+# Usage: docker-compose -f infra/docker-compose.yml -f infra/docker-compose.dev.yml up
+version: "3.9"
+
+services:
+  backend:
+    volumes:
+      - ../backend:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  worker:
+    volumes:
+      - ../backend:/app
