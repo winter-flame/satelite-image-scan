@@ -1,0 +1,29 @@
+FROM nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app
+
+RUN apt-get update && apt-get install -y \
+    python3.10 \
+    python3-pip \
+    git \
+    libgdal-dev \
+    gdal-bin \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Install PyTorch with CUDA 12.1 acceleration
+RUN pip3 install --no-cache-dir \
+    torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+
+COPY ai_engine/requirements.txt /app/requirements.txt
+RUN pip3 install --no-cache-dir -r requirements.txt
+
+COPY ai_engine/ /app/ai_engine/
+COPY queue/ /app/queue/
+
+CMD ["celery", "-A", "queue.celery_app", "worker", "-Q", "ai_gpu_queue", "--concurrency=1", "--loglevel=info"]
