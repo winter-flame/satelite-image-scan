@@ -10,7 +10,7 @@ def stitch_tiles_feathered(manifest_path: str, output_path: str) -> dict:
     boundaries, at the cost of being slower and using more memory than
     stitch_tiles() since the full canvas is built explicitly.
     """
-    from app.services.stitching.blend import feather_blend_stack
+    from postprocess.blend import feather_blend_stack
 
     with open(manifest_path) as f:
         manifest = json.load(f)

@@ -1,29 +1,35 @@
+version: "3.9"
 
 services:
+  # 1. FastAPI Ingest Server
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    command: uvicorn ingest_api.main:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - PYTHONPATH=/app
+    depends_on:
+      - redis
+
+  # 2. Celery Queue Worker
+  worker:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    command: celery -A queue.celery_app worker --loglevel=info
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - PYTHONPATH=/app
+    depends_on:
+      - redis
+      - backend
+
+  # 3. Redis Message Broker
   redis:
     image: redis:7-alpine
     ports:
       - "6379:6379"
-
-  backend:
-    build:
-      context: ../backend
-    ports:
-      - "8000:8000"
-    depends_on:
-      - redis
-    environment:
-      - REDIS_URL=redis://redis:6379/0
-    volumes:
-      - ../backend/uploads:/app/uploads
-
-  worker:
-    build:
-      context: ../backend
-    command: celery -A app.workers.celery_app worker --loglevel=info
-    depends_on:
-      - redis
-    environment:
-      - REDIS_URL=redis://redis:6379/0
-    volumes:
-      - ../backend/uploads:/app/uploads
