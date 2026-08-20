@@ -1,0 +1,34 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "JobPayload",
+  "description": "Backend -> AI Orchestrator: metadata riding with each tile job.",
+  "type": "object",
+  "required": ["job_id", "tile_filename", "routing"],
+  "properties": {
+    "job_id": { "type": "string", "format": "uuid" },
+    "tile_filename": { "type": "string" },
+    "tile_index": { "type": "integer" },
+    "tile_bounds": {
+      "type": "object",
+      "properties": {
+        "x": { "type": "integer" },
+        "y": { "type": "integer" },
+        "width": { "type": "integer" },
+        "height": { "type": "integer" }
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Output of backend/app/services/metadata_extraction/extractor.py"
+    },
+    "routing": {
+      "type": "object",
+      "required": ["pipeline", "confidence"],
+      "properties": {
+        "pipeline": { "type": "string" },
+        "reason": { "type": "string" },
+        "confidence": { "type": "string", "enum": ["high", "medium", "low"] }
+      }
+    }
+  }
+}

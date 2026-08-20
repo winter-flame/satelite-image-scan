@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ConfidenceMap",
+  "description": "AI Correction Workers -> Backend: must survive stitching intact. Per-pixel recovered-vs-invented confidence.",
+  "type": "object",
+  "required": ["tile_filename", "confidence_data_url"],
+  "properties": {
+    "tile_filename": { "type": "string" },
+    "confidence_data_url": {
+      "type": "string",
+      "description": "Path/URL to the per-pixel confidence raster (same dimensions as the tile)"
+    },
+    "evidence_summary": {
+      "type": "object",
+      "description": "Human-readable breakdown of what was recovered vs. inferred, for the frontend evidence panel"
+    },
+    "provenance": {
+      "type": "object",
+      "properties": {
+        "model": { "type": "string" },
+        "model_version": { "type": "string" },
+        "iterations": { "type": "integer" }
+      }
+    }
+  }
+}
