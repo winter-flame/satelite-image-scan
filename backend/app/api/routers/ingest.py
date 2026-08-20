@@ -6,6 +6,8 @@ from typing import Dict
 import uuid
 import os
 
+from app.services.metadata_extraction.extractor import extract_and_route
+
 router = APIRouter(prefix="/ingest", tags=["ingest"])
 
 UPLOAD_DIR = "uploads"
@@ -37,7 +39,7 @@ async def upload_image(file: UploadFile = File(...)):
     with open(dest_path, "wb") as f:
         f.write(contents)
 
-    jobs[job_id] = {
+    job_record = {
         "job_id": job_id,
         "filename": file.filename,
         "path": dest_path,
@@ -45,6 +47,16 @@ async def upload_image(file: UploadFile = File(...)):
         "status": "uploaded",
     }
 
-    # TODO: enqueue metadata_extraction service here (sensor, sun elevation, bands)
+    try:
+        extraction_result = extract_and_route(dest_path)
+        job_record["metadata"] = extraction_result["metadata"]
+        job_record["routing"] = extraction_result["routing"]
+        job_record["status"] = "metadata_extracted"
+    except Exception as e:
+        # Don't fail the upload if metadata extraction has trouble (e.g.
+        # unsupported format) -- the job still exists, just unrouted.
+        job_record["metadata_extraction_error"] = str(e)
+
+    jobs[job_id] = job_record
 
     return jobs[job_id]
