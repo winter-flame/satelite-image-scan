@@ -1,77 +1,96 @@
-import json
-import os
+"""
+backend/postprocess/stitcher.py
 
+Stitches processed GeoTIFF tiles back into a single continuous raster dataset
+using 2D raised cosine windowing to eliminate seam artifacts.
+"""
+
+import os
+import glob
+from typing import List
 import numpy as np
 import rasterio
-def stitch_tiles_feathered(manifest_path: str, output_path: str) -> dict:
+from rasterio.transform import from_bounds
+
+
+def create_2d_raised_cosine_window(height: int, width: int) -> np.ndarray:
+    """Generates a 2D smooth blending window for seamless tile stitching."""
+    wy = np.hanning(height)
+    wx = np.hanning(width)
+    return np.outer(wy, wx)
+
+
+def stitch_processed_tiles(
+    tile_dir: str, 
+    output_geotiff_path: str, 
+    overlap_px: int = 32
+) -> str:
     """
-    Reassembles tiles using distance-weighted feather blending instead of
-    a hard first/last/min/max cutover -- eliminates visible seams at tile
-    boundaries, at the cost of being slower and using more memory than
-    stitch_tiles() since the full canvas is built explicitly.
+    Reads processed tile TIFs from tile_dir and reconstructs the full GeoTIFF.
     """
-    from postprocess.blend import feather_blend_stack
+    tile_files = sorted(glob.glob(os.path.join(tile_dir, "*.tif")))
+    if not tile_files:
+        raise FileNotFoundError(f"No tile TIFs found in directory: {tile_dir}")
 
-    with open(manifest_path) as f:
-        manifest = json.load(f)
+    # Read spatial reference from first tile
+    with rasterio.open(tile_files[0]) as sample:
+        crs = sample.crs
+        count = sample.count
+        dtype = sample.dtypes[0]
 
-    tiles_dir = os.path.dirname(manifest_path)
-    tile_meta = manifest["tiles"]
+    # Calculate global bounding box & dimensions across all tiles
+    min_x, min_y, max_x, max_y = float("inf"), float("inf"), float("-inf"), float("-inf")
+    for tf in tile_files:
+        with rasterio.open(tf) as src:
+            b = src.bounds
+            min_x, min_y = min(min_x, b.left), min(min_y, b.bottom)
+            max_x, max_y = max(max_x, b.right), max(max_y, b.top)
 
-    tile_arrays = []
-    tile_offsets = []
-    tile_valid_masks = []
-    ref_profile = None
+    # Reconstruct combined output raster metadata
+    with rasterio.open(tile_files[0]) as sample:
+        pixel_size_x = abs(sample.transform.a)
+        pixel_size_y = abs(sample.transform.e)
 
-    for t in tile_meta:
-        tile_path = os.path.join(tiles_dir, t["filename"])
-        with rasterio.open(tile_path) as src:
-            if ref_profile is None:
-                ref_profile = src.profile.copy()
-            data = src.read()
-            nodata = src.nodata
-            valid_mask = (data[0] != nodata) if nodata is not None else np.ones(data.shape[1:], dtype=bool)
+    out_width = int(round((max_x - min_x) / pixel_size_x))
+    out_height = int(round((max_y - min_y) / pixel_size_y))
+    out_transform = from_bounds(min_x, min_y, max_x, max_y, out_width, out_height)
 
-            tile_arrays.append(data)
-            tile_offsets.append((t["y"], t["x"]))
-            tile_valid_masks.append(valid_mask)
+    # Accumulator buffers for weighted blending
+    acc_data = np.zeros((count, out_height, out_width), dtype=np.float32)
+    acc_weights = np.zeros((out_height, out_width), dtype=np.float32)
 
-    canvas_h = manifest["source_height"]
-    canvas_w = manifest["source_width"]
-    bands = tile_arrays[0].shape[0]
+    for tf in tile_files:
+        with rasterio.open(tf) as src:
+            data = src.read().astype(np.float32)
+            h, w = src.height, src.width
+            window_weights = create_2d_raised_cosine_window(h, w)
 
-    blended = feather_blend_stack(
-        tile_arrays, tile_offsets, tile_valid_masks,
-        canvas_shape=(bands, canvas_h, canvas_w),
-    )
+            # Compute pixel offset relative to output origin
+            col_off = int(round((src.bounds.left - min_x) / pixel_size_x))
+            row_off = int(round((max_y - src.bounds.top) / pixel_size_y))
 
-    with rasterio.open(tile_meta[0]["filename"] and os.path.join(tiles_dir, tile_meta[0]["filename"])) as first_tile:
-        first_transform = first_tile.transform
+            for b in range(count):
+                acc_data[b, row_off:row_off+h, col_off:col_off+w] += data[b] * window_weights
 
-    # Reconstruct the full-extent transform from the first tile's pixel scale,
-    # anchored at the manifest's recorded source origin (0,0 tile position).
-    from rasterio.transform import Affine
-    full_transform = Affine(
-        first_transform.a, first_transform.b, first_transform.c - (tile_meta[0]["x"] * first_transform.a),
-        first_transform.d, first_transform.e, first_transform.f - (tile_meta[0]["y"] * first_transform.e),
-    )
+            acc_weights[row_off:row_off+h, col_off:col_off+w] += window_weights
 
-    out_profile = ref_profile.copy()
-    out_profile.update({
-        "height": canvas_h,
-        "width": canvas_w,
-        "transform": full_transform,
-    })
+    # Normalize blended bands by weight sum
+    mask = acc_weights > 0
+    for b in range(count):
+        acc_data[b, mask] /= acc_weights[mask]
 
-    with rasterio.open(output_path, "w", **out_profile) as dst:
-        dst.write(blended)
-
-    return {
-        "output_path": output_path,
-        "width": canvas_w,
-        "height": canvas_h,
-        "crs": str(out_profile.get("crs")),
-        "transform": list(full_transform)[:6],
-        "tile_count": len(tile_meta),
-        "method": "feathered",
+    output_meta = {
+        "driver": "GTiff",
+        "height": out_height,
+        "width": out_width,
+        "count": count,
+        "dtype": dtype,
+        "crs": crs,
+        "transform": out_transform
     }
+
+    os.makedirs(os.path.dirname(os.path.abspath(output_geotiff_path)), exist_ok=True)
+    with rasterio.open(output_geotiff_path, "w", **output_meta) as dst:
+        dst.write(np.clip(acc_data, 0, 255).astype(dtype))
+
+    return output_geotiff_path
