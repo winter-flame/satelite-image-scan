@@ -9,3 +9,5 @@ __pycache__/
 *.pyc
 __pycache__/
 *.pyc
+# ML test outputs
+ml_engine/test_data/*_output.jpg
